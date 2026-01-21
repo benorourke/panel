@@ -23,19 +23,22 @@ def black_scholes(S, K, T, r, sigma, option_type: Literal['call', 'put']):
     Args:
         S: Current stock price
         K: Strike price
-        T: Time to maturity (in years)
+        T: Time to maturity (in days)
         r: Risk-free interest rate (decimal)
         sigma: Volatility (decimal)
         option_type: "call" or "put"
     """
-    # Calculate d1 and d2
-    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
-    d2 = d1 - sigma * np.sqrt(T)
+    # Convert T from days to years
+    T_years = T / 252
+    
+    # Calculate d1 and d2 using T_years
+    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T_years) / (sigma * np.sqrt(T_years))
+    d2 = d1 - sigma * np.sqrt(T_years)
 
     if option_type == "call":
-        price = (S * norm.cdf(d1)) - (K * np.exp(-r * T) * norm.cdf(d2))
+        price = (S * norm.cdf(d1)) - (K * np.exp(-r * T_years) * norm.cdf(d2))
     elif option_type == "put":
-        price = (K * np.exp(-r * T) * norm.cdf(-d2)) - (S * norm.cdf(-d1))
+        price = (K * np.exp(-r * T_years) * norm.cdf(-d2)) - (S * norm.cdf(-d1))
     else:
         raise ValueError("option_type must be 'call' or 'put'")
     return price
@@ -87,7 +90,7 @@ sigma_range = pn.widgets.RangeSlider(
     name='Volatility Bounds (σ)', start=0.01, end=1.0, value=(0.15, 0.3), step=0.01
 )
 strike_slider = pn.widgets.IntSlider(name='Strike Price (K)', start=50, end=150, value=100)
-expiry_slider = pn.widgets.FloatSlider(name='Time to Expiry (T)', start=0.1, end=2.0, step=0.1, value=1.0)
+expiry_slider = pn.widgets.IntSlider(name='Time to Expiry (T days)', start=1, end=252, step=1, value=30)
 shock_button = pn.widgets.Button(name='💣 Trigger -10% Shock', button_type='danger')
 pause_button = pn.widgets.Toggle(name='Pause Simulation', button_type='primary', value=False)
 
