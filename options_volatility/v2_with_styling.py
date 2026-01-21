@@ -15,6 +15,7 @@ Used by GBM sim to calculate the next price of the asset.
 UNDERLYING_ANNUAL_RETURN = 0.07
 RISK_FREE_RATE = 0.05
 
+REFRESH_RATE_MS = 500
 
 def black_scholes(S, K, T, r, sigma, option_type: Literal['call', 'put']):
     """
@@ -158,7 +159,7 @@ def toggle_pause(event):
 
 pause_button.param.watch(toggle_pause, 'value')
 shock_button.on_click(update)
-cb = pn.state.add_periodic_callback(update, period=200, count=None)
+cb = pn.state.add_periodic_callback(update, period=REFRESH_RATE_MS, count=None)
 
 plot_pane = pn.pane.HoloViews(get_plots(), sizing_mode='stretch_width')
 
