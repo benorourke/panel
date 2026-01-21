@@ -8,30 +8,25 @@ from scipy.stats import norm
 
 pn.extension(design='material')
 
-
 """
-Mu (Annual Return/Drift): This is the expected total return of the underlying asset in the real world. Used by GBM sim
-to calculate the next price of the asset.
-
-It includes a risk premium (the extra return investors demand for holding a risky asset).
+Mu (Annual Return/Drift): This is the expected total return of the underlying asset in the real world. 
+Used by GBM sim to calculate the next price of the asset.
 """
 UNDERLYING_ANNUAL_RETURN = 0.07
 RISK_FREE_RATE = 0.05
 
+
 def black_scholes(S, K, T, r, sigma, option_type: Literal['call', 'put']):
     """
-    Args:
-        S: Current stock price
-        K: Strike price
-        T: Time to maturity (in days)
-        r: Risk-free interest rate (decimal)
-        sigma: Volatility (decimal)
-        option_type: "call" or "put"
+    Standard Black-Scholes pricing model.
     """
     # Convert T from days to years
     T_years = T / 252
-    
-    # Calculate d1 and d2 using T_years
+
+    # Avoid division by zero if T is very close to 0
+    if T_years <= 1e-5:
+        return max(0, S - K) if option_type == 'call' else max(0, K - S)
+
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T_years) / (sigma * np.sqrt(T_years))
     d2 = d1 - sigma * np.sqrt(T_years)
 
@@ -43,6 +38,7 @@ def black_scholes(S, K, T, r, sigma, option_type: Literal['call', 'put']):
         raise ValueError("option_type must be 'call' or 'put'")
     return price
 
+
 class PricingSimulator:
     def __init__(self):
         self.S = 100.0
@@ -52,11 +48,12 @@ class PricingSimulator:
         self.data = pd.DataFrame(columns=['Time', 'Underlying_Price', 'Option_Price', 'Volatility'])
 
     def step(self, mu, sigma_bounds, K, r, T_expiry, shock=0):
+        # Apply Market Shock
         self.S *= (1 + shock)
-        
+
         # 1. Real-time Volatility Simulation (Random Walk within bounds)
         low, high = sigma_bounds
-        vol_shock = np.random.normal(0, 0.02) # Small daily vol change
+        vol_shock = np.random.normal(0, 0.02)  # Small daily vol change
         self.sigma = np.clip(self.sigma + vol_shock, low, high)
 
         # 2. GBM Step using simulated sigma
@@ -65,14 +62,12 @@ class PricingSimulator:
         diffusion = self.sigma * np.sqrt(self.dt) * epsilon
         self.S *= np.exp(drift + diffusion)
 
-        # 3. Option Pricing with fixed T_expiry as opposed to iteratively decaying T
-        # time_to_decay = max(0.001, T_expiry - (self.t * self.dt))
-        # opt_p = black_scholes(self.S, K, time_to_decay, r, self.sigma)
+        # 3. Option Pricing
         opt_p = black_scholes(self.S, K, T_expiry, r, self.sigma, option_type='put')
         opt_c = black_scholes(self.S, K, T_expiry, r, self.sigma, option_type='call')
 
         new_row = pd.DataFrame({
-            'Time': [self.t], 
+            'Time': [self.t],
             'Underlying_Price': [self.S],
             'Put_Option_Price': [opt_p],
             'Call_Option_Price': [opt_c],
@@ -86,31 +81,59 @@ class PricingSimulator:
 sim = PricingSimulator()
 
 # --- UI Components ---
+
+# Group 1: Market Params
 sigma_range = pn.widgets.RangeSlider(
     name='Volatility Bounds (σ)', start=0.01, end=1.0, value=(0.15, 0.3), step=0.01
 )
 strike_slider = pn.widgets.IntSlider(name='Strike Price (K)', start=50, end=150, value=100)
-expiry_slider = pn.widgets.IntSlider(name='Time to Expiry (T days)', start=1, end=252, step=1, value=30)
-shock_button = pn.widgets.Button(name='💣 Trigger -10% Shock', button_type='danger')
-pause_button = pn.widgets.Toggle(name='Pause Simulation', button_type='primary', value=False)
+expiry_slider = pn.widgets.IntSlider(name='Time to Expiry (Days)', start=1, end=252, step=1, value=30)
+
+# Group 2: Simulation Controls
+shock_input = pn.widgets.FloatInput(
+    name='Shock Size (%)', value=-10.0, step=1.0, start=-50.0, end=50.0, width=100
+)
+shock_button = pn.widgets.Button(
+    name='💥 Apply Shock', button_type='danger', width=130
+)
+pause_button = pn.widgets.Toggle(
+    name='⏸️ Pause', button_type='primary', value=False, width=240
+)
+
 
 def get_plots():
     df = sim.data
     if df.empty: return hv.Curve([]) * hv.Curve([])
 
-    # Adjusting width to ~400 so two plots fit side-by-side comfortably
-    vol_curve = hv.Curve(df, 'Time', 'Volatility', label='Simulated Vol (σ)').opts(color='red', width=400, height=250)
-    underlying_curve = hv.Curve(df, 'Time', 'Underlying_Price', label='Underlying Price').opts(color='blue', width=400, height=250)
-    put_option_curve = hv.Curve(df, 'Time', 'Put_Option_Price', label='Option Price (Put)').opts(color='green', width=400, height=250)
-    call_option_curve = hv.Curve(df, 'Time', 'Call_Option_Price', label='Option Price (Call)').opts(color='purple', width=400, height=250)
+    # Plot styling
+    common_opts = dict(height=250, responsive=True, gridstyle={'grid_line_color': '#efefef'})
 
-    # Creating the 2x2 grid layout
-    return (vol_curve + underlying_curve + put_option_curve + call_option_curve).cols(2)
+    vol_curve = hv.Curve(df, 'Time', 'Volatility', label='Simulated Vol (σ)').opts(
+        color='#FF5722', title="Volatility Process", **common_opts
+    )
+    underlying_curve = hv.Curve(df, 'Time', 'Underlying_Price', label='Price').opts(
+        color='#2196F3', title="Underlying Asset", **common_opts
+    )
+    put_curve = hv.Curve(df, 'Time', 'Put_Option_Price', label='Put').opts(
+        color='#4CAF50', title="Put Option", **common_opts
+    )
+    call_curve = hv.Curve(df, 'Time', 'Call_Option_Price', label='Call').opts(
+        color='#9C27B0', title="Call Option", **common_opts
+    )
+
+    # 2x2 Grid
+    return (vol_curve + underlying_curve + put_curve + call_curve).cols(2)
 
 
-# --- 4. Callbacks ---
+# --- Callbacks ---
 def update(event=None):
-    shock_val = -0.10 if event else 0
+    # Determine shock value
+    # We check if the event object matches the shock_button to ensure
+    # the periodic callback (event=None) doesn't trigger a shock.
+    shock_val = 0.0
+    if event is not None and event.obj == shock_button:
+        shock_val = shock_input.value / 100.0
+
     sim.step(
         UNDERLYING_ANNUAL_RETURN,
         sigma_range.value,
@@ -125,25 +148,44 @@ def update(event=None):
 def toggle_pause(event):
     if event.new:
         cb.stop()
-        pause_button.name = '▶ Resume Simulation'
+        pause_button.name = '▶ Resume'
+        pause_button.button_type = 'success'
     else:
         cb.start()
-        pause_button.name = 'Pause Simulation'
+        pause_button.name = '⏸️ Pause'
+        pause_button.button_type = 'primary'
 
 
 pause_button.param.watch(toggle_pause, 'value')
 shock_button.on_click(update)
-cb = pn.state.add_periodic_callback(update, period=200, count=None)  # 200ms updates
+cb = pn.state.add_periodic_callback(update, period=200, count=None)
 
-plot_pane = pn.pane.HoloViews(get_plots())
+plot_pane = pn.pane.HoloViews(get_plots(), sizing_mode='stretch_width')
 
-# --- 5. Layout ---
-dashboard = pn.Column(
-    "# Option Pricing & Volatility Simulator",
-    pn.Row(
-        pn.Column("### Config", sigma_range, strike_slider, expiry_slider, shock_button, pause_button),
-        plot_pane
-    )
+# --- Layout ---
+
+# Create formatted Cards for the sidebar
+market_card = pn.Card(
+    sigma_range, strike_slider, expiry_slider,
+    title="📉 Market Parameters",
+    header_background='#f0f0f0',
+    collapsed=False
+)
+
+sim_card = pn.Card(
+    pn.Row(shock_input, shock_button, align='end'),  # Align input and button
+    pn.layout.Divider(),
+    pause_button,
+    title="⚡ Simulation Controls",
+    header_background='#f0f0f0',
+    collapsed=False
+)
+
+# Main Template
+dashboard = pn.template.MaterialTemplate(
+    title="Option Pricing & Volatility Simulator",
+    sidebar=[market_card, sim_card],
+    main=[plot_pane],
 )
 
 dashboard.servable()
