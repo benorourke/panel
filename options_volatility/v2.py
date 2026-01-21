@@ -8,11 +8,10 @@ from scipy.stats import norm
 
 pn.extension(design='material')
 
+
 """
-TODO:
-"""
-"""
-Mu (Annual Return/Drift): This is the expected total return of the underlying asset in the real world.
+Mu (Annual Return/Drift): This is the expected total return of the underlying asset in the real world. Used by GBM sim
+to calculate the next price of the asset.
 
 It includes a risk premium (the extra return investors demand for holding a risky asset).
 """
