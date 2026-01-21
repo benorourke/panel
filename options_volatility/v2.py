@@ -40,8 +40,7 @@ def black_scholes(S, K, T, r, sigma, option_type: Literal['call', 'put']):
         raise ValueError("option_type must be 'call' or 'put'")
     return price
 
-# --- 2. Simulation State ---
-class MarketSim:
+class PricingSimulator:
     def __init__(self):
         self.S = 100.0
         self.sigma = 0.2  # Initial volatility
@@ -69,8 +68,6 @@ class MarketSim:
         opt_p = black_scholes(self.S, K, T_expiry, r, self.sigma, option_type='put')
         opt_c = black_scholes(self.S, K, T_expiry, r, self.sigma, option_type='call')
 
-
-
         new_row = pd.DataFrame({
             'Time': [self.t], 
             'Underlying_Price': [self.S],
@@ -83,7 +80,7 @@ class MarketSim:
         return self.data
 
 
-sim = MarketSim()
+sim = PricingSimulator()
 
 # --- UI Components ---
 sigma_range = pn.widgets.RangeSlider(
